@@ -18,5 +18,15 @@
             "type": "composer",
             "url": "https://packagist.phpcomposer.com"
         }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "guandeng\\testpkg\\Md5HasherProvider"
+            ],
+            "aliases": {
+                "EasyWeChat": "guandeng\\testpkg\\Facade"
+            }
+        }
     }
 }
