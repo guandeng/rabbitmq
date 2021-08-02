@@ -1,0 +1,22 @@
+{
+    "name": "guandeng/md5hash",
+    "description": "md5加密",
+    "autoload": {
+        "psr-4": {
+            "Guandeng\\Md5hash\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "guandeng",
+            "email": "guandeng@hotmail.com"
+        }
+    ],
+    "require": {},
+    "repositories": {
+        "packagist": {
+            "type": "composer",
+            "url": "https://packagist.phpcomposer.com"
+        }
+    }
+}
