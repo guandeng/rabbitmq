@@ -1,11 +1,11 @@
 <?php
 
 return [
-    'amqp_host'          => env('RABBITMQ_HOST', '127.0.0.1'),
-    'amqp_port'          => 5672,
-    'amqp_user'          => env('RABBITMQ_USER', 'guest'),
-    'amqp_pass'          => env('RABBITMQ_PASS', 'guest'),
-    'amqp_vhost'         => env('RABBITMQ_VHOST', '/'),
-    'amqp_default_queue' => env('RABBITMQ_DEFAULT_QUEUE', 'queue'),
-    'amqp_exchange'      => env('RABBITMQ_EXCHANGE', ''),
+    'host'          => env('RABBITMQ_HOST', '127.0.0.1'),
+    'port'          => env('RABBITMQ_HOST', 5672),
+    'user'          => env('RABBITMQ_USER', 'root'),
+    'password'      => env('RABBITMQ_PASS', '123456'),
+    'vhost'         => env('RABBITMQ_VHOST', '/'),
+    'default_queue' => env('RABBITMQ_DEFAULT_QUEUE', 'queue'),
+    'exchange'      => env('RABBITMQ_EXCHANGE', ''),
 ];
