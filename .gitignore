@@ -1,2 +1,5 @@
-!.gitignore
 vendor
+/.git
+/.idea
+/.vscode
+/composer.lock
