@@ -5,6 +5,9 @@ namespace Guandeng\Rabbitmq\Broker;
 use Guandeng\Rabbitmq\Message\Message;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
+use PhpAmqpLib\Exception\AMQPTimeoutException;
+use Guandeng\Rabbitmq\Exception\BrokerException;
+use PhpAmqpLib\Message\AMQPMessage;
 
 class Broker extends AMQPChannel
 {
@@ -13,7 +16,8 @@ class Broker extends AMQPChannel
     public $defaultRoutingKey;
     public $exchange;
     public $exchange_declare;
-    public $queue_declare = [];
+    public $queue_declare  = [];
+    public $consumeTimeout = 3;
 
     public function __construct($config = [])
     {
@@ -50,16 +54,11 @@ class Broker extends AMQPChannel
     {
         //创建连接
         $this->connect = new AMQPStreamConnection(
+            $this->config['host'],
+            $this->config['port'],
             $this->config['user'],
             $this->config['password'],
             $this->config['vhost'],
-            $this->config['insist'],
-            $this->config['login_method'],
-            $this->config['locale'],
-            $this->config['io'],
-            $this->config['heartbeat'],
-            $this->config['connection_timeout'],
-            $this->config['channel_rpc_timeout'],
         );
     }
 
@@ -83,7 +82,6 @@ class Broker extends AMQPChannel
     public function publishBatch($messages, $routingKey = null)
     {
         $this->queueDeclareBind($routingKey);
-        // Create the messages
         foreach ($messages as $message) {
             $this->batch_basic_publish(
                 (new Message($message))->getAMQPMessage(), $this->exchange, $routingKey
@@ -105,15 +103,133 @@ class Broker extends AMQPChannel
         // Create/declare queue
         $this->queue_declare(
             $routingKey,
-            $this->queue_declare['passive'],
-            $this->queue_declare['durable'],
-            $this->queue_declare['exclusive'],
-            $this->queue_declare['auto_delete']
+            $this->queue_declare['passive'] ?? false,
+            $this->queue_declare['durable'] ?? true,
         );
 
         if ($this->exchange != "") {
             // Bind the queue to the exchange
             $this->queue_bind($routingKey, $this->exchange, $routingKey);
         }
+    }
+
+    /**
+     * @param null $routingKey
+     * @return mixed
+     */
+    public function getQueueInfo($routingKey = null)
+    {
+        if (is_null($routingKey)) {
+            // Set the routing key if missing
+            $routingKey = $this->defaultRoutingKey;
+        }
+
+        $ch    = curl_init();
+        $vhost = ($this->config['vhost'] != "/" ? $this->vhost : "%2F");
+        $url   = "http://" . $this->config['host'] . ":15672" . "/api/queues/$vhost/" . $routingKey;
+
+        curl_setopt($ch, CURLOPT_URL, $url);
+
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+
+        curl_setopt($ch, CURLOPT_USERPWD, $this->config['user'] . ":" . $this->config['password']);
+
+        curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
+
+        $result = curl_exec($ch);
+        curl_close($ch);
+
+        return json_decode($result, true);
+    }
+
+    /**
+     * @param callable $callback
+     * @param null $routingKey
+     * @param array $options
+     * @return bool
+     */
+    public function basicConsume($routingKey = null, $options = [])
+    {
+        $this->queueDeclareBind($routingKey);
+
+        $this->basic_consume(
+           $routingKey,
+           '',
+           false,
+           false,
+           false,
+           false,
+        );
+
+        return $this->waitConsume($options);
+    }
+
+    /**
+     * Starts to listen to a queue for incoming messages.
+     * @param array $handlers Array of handler class instances
+     * @param null $routingKey
+     * @param array $options
+     * @return bool
+     * @internal param string $queueName The AMQP queue
+     */
+    public function listenToQueue(array $handlers , $routingKey = null, $options =[] )
+    {
+        /* Look for handlers */
+        $handlersMap = array();
+        foreach ($handlers as $handlerClassPath) {
+            if (!class_exists($handlerClassPath)) {
+                $handlerClassPath = "Guandeng\\Rabbitmq\\Handlers\\DefaultHandler";
+                if (!class_exists($handlerClassPath)) {
+                    throw new BrokerException(
+                        "Class $handlerClassPath was not found!"
+                    );
+                }
+            }
+            $handlerOb = new $handlerClassPath();
+            $classPathParts = explode("\\", $handlerClassPath);
+            $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
+        }
+        $this->queueDeclareBind($routingKey);
+        /* Start consuming */
+        $this->basic_qos(
+            (isset($options["prefetch_size"]) ? $options["prefetch_size"] : null),
+            (isset($options["prefetch_count"]) ? $options["prefetch_count"] : 1),
+            (isset($options["a_global"]) ? $options["a_global"] : null)
+        );
+        $this->basic_consume(
+            $routingKey,
+            (isset($options["consumer_tag"]) ? $options["consumer_tag"] : ''),
+            (isset($options["no_local"]) ? (bool)$options["no_local"] : false),
+            (isset($options["no_ack"]) ? (bool)$options["no_ack"] : false),
+            (isset($options["exclusive"]) ? (bool)$options["exclusive"] : false),
+            (isset($options["no_wait"]) ? (bool)$options["no_wait"] : false),
+            function (AMQPMessage $amqpMsg) use($handlersMap) {
+                $msg = Message::fromAMQPMessage($amqpMsg);
+                $this->handleMessage($msg, $handlersMap);
+            }
+        );
+        return $this->waitConsume($options);
+    }
+
+    /**
+     * @param array $options
+     * @return bool
+     */
+    protected function waitConsume($options = [])
+    {
+        $consume = true;
+        while (count($this->callbacks) && $consume) {
+            try {
+                $this->wait((isset($options["allowed_methods"]) ? $options["allowed_methods"] : null),
+                    (isset($options["non_blocking"]) ? $options["non_blocking"] : false), $this->consumeTimeout);
+            } catch (AMQPTimeoutException $e) {
+                if ($e->getMessage() === "The connection timed out after {$this->consumeTimeout} sec while awaiting incoming data") {
+                    $consume = false;
+                } else {
+                    throw ($e);
+                }
+            }
+        }
+        return true;
     }
 }

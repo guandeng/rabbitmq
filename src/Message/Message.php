@@ -1,21 +1,13 @@
 <?php
-/**
- * Package : RabbitMQ Laravel
- * User: kontoulis
- * Date: 12/9/2015
- * Time: 1:24 μμ
- */
-namespace Kontoulis\RabbitMQLaravel\Message;
+namespace Guandeng\Rabbitmq\Message;
 
 use PhpAmqpLib\Message\AMQPMessage;
-
 
 /**
  * Class Message
  * @package RabbitMQLaravel\Libs
  */
 class Message
-
 {
     /** @var string */
 
@@ -29,11 +21,9 @@ class Message
 
     protected $amqpMessage;
 
-
     /**************************************************************************
      * Constructors
      *************************************************************************/
-
 
     /**
      * Creates a new message
@@ -42,14 +32,14 @@ class Message
      * @param array                           $config
      */
 
-    public function __construct(array $msg, $routingKey = null, array $config = array() )
+    public function __construct(array $msg, $routingKey = null, array $config = array())
     {
         /* Dynamic properties */
-        foreach($msg as $key => $value){
+        foreach ($msg as $key => $value) {
             $this->$key = $value;
         }
-        $this->routingKey = $routingKey;
-        $this->config = $config;
+        $this->routingKey  = $routingKey;
+        $this->config      = $config;
         $this->amqpMessage = new AMQPMessage(json_encode($msg), $config);
     }
 
@@ -95,11 +85,11 @@ class Message
         return $this->amqpMessage;
     }
 
-
     /**
      * @param AMQPMessage $AMQPMessage
      */
-    public function setAMQPMessage(AMQPMessage $AMQPMessage){
+    public function setAMQPMessage(AMQPMessage $AMQPMessage)
+    {
         $this->amqpMessage = $AMQPMessage;
     }
 
@@ -107,10 +97,10 @@ class Message
      * @param bool $assoc
      * @return object|array
      */
-    public function getData($assoc = false){
+    public function getData($assoc = false)
+    {
         return json_decode($this->getBody(), $assoc);
     }
-
 
     /**
      * Creates a message given the AMQP message and the queue it was received
@@ -134,11 +124,11 @@ class Message
     /**
      * @return string
      */
-    public function getBody(){
+    public function getBody()
+    {
 
         return $this->amqpMessage->getBody();
     }
-
 
     /**
      * @return string
@@ -182,7 +172,6 @@ class Message
         );
     }
 
-
     /**
      * Re-publishes the message to the queue.
      */
@@ -207,7 +196,7 @@ class Message
             json_encode($this->config),
             array(
                 'delivery_mode' => 2,
-                'routing_key'   => $this->routingKey
+                'routing_key'   => $this->routingKey,
             )
         );
     }
@@ -221,4 +210,3 @@ class Message
     }
 
 }
-
