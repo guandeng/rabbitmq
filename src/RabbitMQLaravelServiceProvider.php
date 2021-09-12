@@ -14,8 +14,8 @@ class RabbitMQLaravelServiceProvider extends ServiceProvider
     public function boot()
     {
         $this->publishes([
-		    __DIR__.'/config.php' => base_path('config/rabbitmq-laravel.php'),
-	    ]);
+            __DIR__ . '/config.php' => base_path('config/rabbitmq.php'),
+        ]);
     }
 
     /**
@@ -25,8 +25,9 @@ class RabbitMQLaravelServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->app->singleton("md5hash",function (){
-            return new Md5Hasher();
+        $this->app->bind('Guandeng\Rabbitmq\RabbitMQ', function ($app) {
+            $config = $app['config']->get("rabbitmq-laravel");
+            return new RabbitMQ($config);
         });
     }
 }
