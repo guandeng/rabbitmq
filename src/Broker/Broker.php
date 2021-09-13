@@ -2,11 +2,11 @@
 
 namespace Guandeng\Rabbitmq\Broker;
 
+use Guandeng\Rabbitmq\Exception\BrokerException;
 use Guandeng\Rabbitmq\Message\Message;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
-use Guandeng\Rabbitmq\Exception\BrokerException;
 use PhpAmqpLib\Message\AMQPMessage;
 
 class Broker extends AMQPChannel
@@ -17,7 +17,7 @@ class Broker extends AMQPChannel
     public $exchange;
     public $exchange_declare;
     public $queue_declare  = [];
-    public $consumeTimeout = 3;
+    public $consumeTimeout = 5;
 
     public function __construct($config = [])
     {
@@ -153,12 +153,12 @@ class Broker extends AMQPChannel
         $this->queueDeclareBind($routingKey);
 
         $this->basic_consume(
-           $routingKey,
-           '',
-           false,
-           false,
-           false,
-           false,
+            $routingKey,
+            '',
+            false,
+            false,
+            false,
+            false,
         );
 
         return $this->waitConsume($options);
@@ -172,7 +172,7 @@ class Broker extends AMQPChannel
      * @return bool
      * @internal param string $queueName The AMQP queue
      */
-    public function listenToQueue(array $handlers , $routingKey = null, $options =[] )
+    public function listenToQueue(array $handlers, $routingKey = null, $options = [])
     {
         /* Look for handlers */
         $handlersMap = array();
@@ -185,8 +185,8 @@ class Broker extends AMQPChannel
                     );
                 }
             }
-            $handlerOb = new $handlerClassPath();
-            $classPathParts = explode("\\", $handlerClassPath);
+            $handlerOb                                                = new $handlerClassPath();
+            $classPathParts                                           = explode("\\", $handlerClassPath);
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         $this->queueDeclareBind($routingKey);
@@ -199,11 +199,11 @@ class Broker extends AMQPChannel
         $this->basic_consume(
             $routingKey,
             (isset($options["consumer_tag"]) ? $options["consumer_tag"] : ''),
-            (isset($options["no_local"]) ? (bool)$options["no_local"] : false),
-            (isset($options["no_ack"]) ? (bool)$options["no_ack"] : false),
-            (isset($options["exclusive"]) ? (bool)$options["exclusive"] : false),
-            (isset($options["no_wait"]) ? (bool)$options["no_wait"] : false),
-            function (AMQPMessage $amqpMsg) use($handlersMap) {
+            (isset($options["no_local"]) ? (bool) $options["no_local"] : false),
+            (isset($options["no_ack"]) ? (bool) $options["no_ack"] : false),
+            (isset($options["exclusive"]) ? (bool) $options["exclusive"] : false),
+            (isset($options["no_wait"]) ? (bool) $options["no_wait"] : false),
+            function (AMQPMessage $amqpMsg) use ($handlersMap) {
                 $msg = Message::fromAMQPMessage($amqpMsg);
                 $this->handleMessage($msg, $handlersMap);
             }
@@ -220,8 +220,11 @@ class Broker extends AMQPChannel
         $consume = true;
         while (count($this->callbacks) && $consume) {
             try {
-                $this->wait((isset($options["allowed_methods"]) ? $options["allowed_methods"] : null),
-                    (isset($options["non_blocking"]) ? $options["non_blocking"] : false), $this->consumeTimeout);
+                $options["allowed_methods"] = 'test';
+                $options["non_blocking"]    = true;
+                $allowed_methods            = $options["allowed_methods"] ?? null;
+                $non_blocking               = $options["non_blocking"] ?? false;
+                $this->wait($allowed_methods, $non_blocking, $this->consumeTimeout);
             } catch (AMQPTimeoutException $e) {
                 if ($e->getMessage() === "The connection timed out after {$this->consumeTimeout} sec while awaiting incoming data") {
                     $consume = false;

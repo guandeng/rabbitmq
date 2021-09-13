@@ -36,7 +36,8 @@ class ConsumerRabbitMQCommand extends Command
     public function handle()
     {
         $this->log('开始监听消息...');
-        Broker::consumer();
+        $handlers = ["\\App\\QueueHandlers\\MyHandler"];
+        \RabbitMQ::listenToQueue($handlers,'test');
         return $this;
     }
 
@@ -48,7 +49,7 @@ class ConsumerRabbitMQCommand extends Command
         if (php_sapi_name() == 'cli') {
             echo $msg, PHP_EOL;
         }
-        info('rabbit_consumer', $msg);
+        info('rabbit_consumer', [$msg]);
         return $this;
     }
 }
