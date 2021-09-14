@@ -8,6 +8,7 @@ use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
+use Guandeng\Rabbitmq\Handlers\Handler;
 
 class Broker extends AMQPChannel
 {
@@ -99,7 +100,6 @@ class Broker extends AMQPChannel
         if (is_null($routingKey)) {
             $routingKey = $this->defaultRoutingKey;
         }
-
         // Create/declare queue
         $this->queue_declare(
             $routingKey,
@@ -196,6 +196,7 @@ class Broker extends AMQPChannel
             (isset($options["prefetch_count"]) ? $options["prefetch_count"] : 1),
             (isset($options["a_global"]) ? $options["a_global"] : null)
         );
+        info(33333);
         $this->basic_consume(
             $routingKey,
             (isset($options["consumer_tag"]) ? $options["consumer_tag"] : ''),
@@ -205,10 +206,73 @@ class Broker extends AMQPChannel
             (isset($options["no_wait"]) ? (bool) $options["no_wait"] : false),
             function (AMQPMessage $amqpMsg) use ($handlersMap) {
                 $msg = Message::fromAMQPMessage($amqpMsg);
+                info(333);
                 $this->handleMessage($msg, $handlersMap);
             }
         );
         return $this->waitConsume($options);
+    }
+
+    /**
+     * @param Message $msg
+     * @param array   $handlersMap
+     * @return bool
+     */
+    public function handleMessage(Message $msg, $handlersMap)
+    {
+        info(444);
+        if(is_string($handlersMap)){
+            $handlersMap = [$handlersMap];
+        }
+        /* Try to process the message */
+        foreach ($handlersMap as $handler) {
+            $retVal = $handler->process($msg);
+            switch ($retVal) {
+                case Handler::RV_SUCCEED_STOP:
+                    /* Handler succeeded, you MUST stop processing */
+                    return $handler->handleSucceedStop($msg);
+
+                case Handler::RV_SUCCEED_CONTINUE:
+                    /* Handler succeeded, you SHOULD continue processing */
+                    $handler->handleSucceedContinue($msg);
+                    break;
+                case Handler::RV_PASS:
+                    /**
+                     * Just continue processing (I have no idea what
+                     * happened in the handler)
+                     */
+                    break;
+
+                case Handler::RV_FAILED_STOP:
+                    /* Handler failed and MUST stop processing */
+                    return $handler->handleFailedStop($msg);
+
+                case Handler::RV_FAILED_REQUEUE:
+                    /**
+                     * Handler failed and MUST stop processing but the message
+                     * will be rescheduled
+                     */
+                    return $handler->handleFailedRequeue($msg);
+
+                case Handler::RV_FAILED_REQUEUE_STOP:
+                    /**
+                     * Handler failed and MUST stop processing but the message
+                     * will be rescheduled
+                     */
+                    return $handler->handleFailedRequeueStop($msg, true);
+
+                case Handler::RV_FAILED_CONTINUE:
+                    /* Well, handler failed, but you may try another */
+                    $handler->handleFailedContinue($msg);
+                    break;
+
+                default:
+                    return false;
+            }
+
+        }
+        /* If haven't return yet, send an ACK */
+        $msg->sendAck();
     }
 
     /**
@@ -220,7 +284,6 @@ class Broker extends AMQPChannel
         $consume = true;
         while (count($this->callbacks) && $consume) {
             try {
-                $options["allowed_methods"] = 'test';
                 $options["non_blocking"]    = true;
                 $allowed_methods            = $options["allowed_methods"] ?? null;
                 $non_blocking               = $options["non_blocking"] ?? false;
