@@ -37,7 +37,7 @@ class RabbitMQLaravelServiceProvider extends ServiceProvider
     public function register()
     {
         $this->commands($this->commands);
-        $this->app->bind('Guandeng\Rabbitmq\RabbitMQ', function ($app) {
+        $this->app->bind('rabbitmq', function ($app) {
             $config = $app['config']->get("rabbitmq");
             return new RabbitMQ($config);
         });

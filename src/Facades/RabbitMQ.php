@@ -8,6 +8,6 @@ class RabbitMQ extends Facade{
 
 	protected static function getFacadeAccessor()
 	{
-		return 'Guandeng\Rabbitmq\RabbitMQ';
+		return 'rabbitmq';
 	}
 } 

@@ -18,5 +18,4 @@ class RabbitMQ extends Broker
     {
         parent::__construct($config);
     }
-
 }

@@ -35,10 +35,10 @@ class ConsumerRabbitMQCommand extends Command
      */
     public function handle()
     {
-        $this->info('开始监听消息...');
+        $this->info('开始监听RabbitMQ消息...');
         $handlers = ["\\App\\QueueHandlers\\MyHandler"];
         \RabbitMQ::setExchange('myExchange');
-        \RabbitMQ::listenToQueue($handlers,'test');
+        \RabbitMQ::listenToQueue($handlers,'test4');
         return $this;
     }
 }

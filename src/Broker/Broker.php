@@ -3,12 +3,14 @@
 namespace Guandeng\Rabbitmq\Broker;
 
 use Guandeng\Rabbitmq\Exception\BrokerException;
+use Guandeng\Rabbitmq\Handlers\Handler;
 use Guandeng\Rabbitmq\Message\Message;
+use Illuminate\Support\Arr;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
 use PhpAmqpLib\Message\AMQPMessage;
-use Guandeng\Rabbitmq\Handlers\Handler;
+use PhpAmqpLib\Wire\AMQPTable;
 
 class Broker extends AMQPChannel
 {
@@ -18,7 +20,7 @@ class Broker extends AMQPChannel
     public $exchange;
     public $exchange_declare;
     public $queue_declare  = [];
-    public $consumeTimeout = 5;
+    public $consumeTimeout = 0;
 
     public function __construct($config = [])
     {
@@ -39,6 +41,14 @@ class Broker extends AMQPChannel
         foreach ($config as $key => $value) {
             $this->config[$key] = $value;
         }
+    }
+
+    public function __call($method, $arguments)
+    {
+        if (method_exists($this, $method)) {
+            return $this->$method(...$arguments);
+        }
+        return false;
     }
 
     /**
@@ -69,18 +79,20 @@ class Broker extends AMQPChannel
     public function setRouteKey($route_key)
     {
         $this->defaultRoutingKey = $route_key;
+        return $this;
     }
 
-    public function setExchange($exchange, $type = "direct")
+    public function exchange($exchange, $type = "direct")
     {
         $this->exchange = $exchange;
         $this->exchange_declare($exchange, $type, false, true, false);
+        return $this;
     }
 
     /**
      * 生产消息（支持多条消息）
      */
-    public function publishBatch($messages, $routingKey = null)
+    public function publish($messages, $routingKey = null)
     {
         $this->queueDeclareBind($routingKey);
         foreach ($messages as $message) {
@@ -109,8 +121,26 @@ class Broker extends AMQPChannel
 
         if ($this->exchange != "") {
             // Bind the queue to the exchange
-            $this->queue_bind($routingKey, $this->exchange, $routingKey);
+            $this->queue_bind($routingKey, $this->exchange, $routingKey, $this->nowait ?? false, $this->tale ?? []);
         }
+        return $this;
+    }
+    protected function setNoWait($nowait = false)
+    {
+        $this->nowait = false;
+        return $this;
+    }
+    /**
+     * 延迟绑定设置
+     */
+    public function setDeadLettle($delayExName, $ttl, $queueName)
+    {
+        $this->tale = new AMQPTable([
+            'x-dead-letter-exchange'    => $delayExName,
+            'x-message-ttl'             => $ttl, //消息存活时间，单位毫秒
+            'x-dead-letter-routing-key' => $queueName,
+        ]);
+        return $this;
     }
 
     /**
@@ -140,6 +170,27 @@ class Broker extends AMQPChannel
         curl_close($ch);
 
         return json_decode($result, true);
+    }
+
+    /**
+     * @param $message
+     * @param null $routingKey
+     */
+    public function publishMessage($message, $routingKey = null)
+    {
+        $this->queueDeclareBind($routingKey);
+        $msg = new Message($message, $routingKey, $this->message_options ?? []);
+        // Create the message
+        $amqpMessage = $msg->getAMQPMessage();
+        $this->basic_publish($amqpMessage, $this->exchange, $routingKey);
+    }
+    /**
+     * 消息属性
+     */
+    public function setMessageOptions($options)
+    {
+        $this->message_options = $options;
+        return $this;
     }
 
     /**
@@ -191,12 +242,12 @@ class Broker extends AMQPChannel
         }
         $this->queueDeclareBind($routingKey);
         /* Start consuming */
+        // prefetch_count 1表示发送一条消息
         $this->basic_qos(
             (isset($options["prefetch_size"]) ? $options["prefetch_size"] : null),
             (isset($options["prefetch_count"]) ? $options["prefetch_count"] : 1),
             (isset($options["a_global"]) ? $options["a_global"] : null)
         );
-        info(33333);
         $this->basic_consume(
             $routingKey,
             (isset($options["consumer_tag"]) ? $options["consumer_tag"] : ''),
@@ -206,7 +257,6 @@ class Broker extends AMQPChannel
             (isset($options["no_wait"]) ? (bool) $options["no_wait"] : false),
             function (AMQPMessage $amqpMsg) use ($handlersMap) {
                 $msg = Message::fromAMQPMessage($amqpMsg);
-                info(333);
                 $this->handleMessage($msg, $handlersMap);
             }
         );
@@ -220,8 +270,7 @@ class Broker extends AMQPChannel
      */
     public function handleMessage(Message $msg, $handlersMap)
     {
-        info(444);
-        if(is_string($handlersMap)){
+        if (is_string($handlersMap)) {
             $handlersMap = [$handlersMap];
         }
         /* Try to process the message */
@@ -284,9 +333,9 @@ class Broker extends AMQPChannel
         $consume = true;
         while (count($this->callbacks) && $consume) {
             try {
-                $options["non_blocking"]    = true;
-                $allowed_methods            = $options["allowed_methods"] ?? null;
-                $non_blocking               = $options["non_blocking"] ?? false;
+                $options["non_blocking"] = true;
+                $allowed_methods         = $options["allowed_methods"] ?? null;
+                $non_blocking            = $options["non_blocking"] ?? false;
                 $this->wait($allowed_methods, $non_blocking, $this->consumeTimeout);
             } catch (AMQPTimeoutException $e) {
                 if ($e->getMessage() === "The connection timed out after {$this->consumeTimeout} sec while awaiting incoming data") {
@@ -297,5 +346,30 @@ class Broker extends AMQPChannel
             }
         }
         return true;
+    }
+    /**
+     * Recursively filter only null values.
+     *
+     * @param array $array
+     * @return array
+     */
+    private function filter(array $array): array
+    {
+        foreach ($array as $index => &$value) {
+            if (is_array($value)) {
+                $value = $this->filter($value);
+
+                continue;
+            }
+
+            // If the value is null then remove it.
+            if ($value === null) {
+                unset($array[$index]);
+
+                continue;
+            }
+        }
+
+        return $array;
     }
 }
