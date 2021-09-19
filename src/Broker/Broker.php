@@ -22,25 +22,16 @@ class Broker extends AMQPChannel
     public $queue_declare  = [];
     public $consumeTimeout = 0;
 
-    public function __construct($config = [])
+    public function __construct()
     {
-        if (!empty($config)) {
-            $this->setConfig($config);
-        }
+        $this->app       = app();
+        $this->queues    = $this->app['config']['rabbitmq']['queues'];
+        $this->exchanges = $this->app['config']['rabbitmq']['exchanges'];
+        $this->config    = $this->app['config']['rabbitmq']['hosts'][0];
 
         $this->createConnet();
 
         parent::__construct($this->connect);
-    }
-
-    /**
-     * 重新配置
-     */
-    public function setConfig($config = [])
-    {
-        foreach ($config as $key => $value) {
-            $this->config[$key] = $value;
-        }
     }
 
     public function __call($method, $arguments)
@@ -73,58 +64,140 @@ class Broker extends AMQPChannel
         );
     }
 
-    /**
-     * 设置路由键
-     */
-    public function setRouteKey($route_key)
+    public function exchange($exchange)
     {
-        $this->defaultRoutingKey = $route_key;
+        $this->setExchangeInfo($exchange);
+        $this->setExchange();
+        $this->setExchangeAttributes();
+        $this->setBind();
+        $this->exchangeDeclare();
         return $this;
     }
 
-    public function exchange($exchange, $type = "direct")
+    public function queue(array $queue_info)
     {
-        $this->exchange = $exchange;
-        $this->exchange_declare($exchange, $type, false, true, false);
+        $this->setQueueInfo($queue_info['queue']);
+        $this->setHandlers($queue_info['handlers']);
+        $this->setPrefetchCount($queue_info['prefetch_count']);
+        $this->setQueue();
+        $this->setQueueAttributes();
+        $this->setQueueBind();
+        return $this;
+    }
+
+    public function setQueueInfo($queue)
+    {
+        $this->queue_info = $this->queues[$queue];
+        return $this;
+    }
+
+    public function setHandlers($handlers)
+    {
+        $this->handlers = $handlers;
+        return $this;
+    }
+
+    public function setPrefechCount($prefetch_count)
+    {
+        $this->prefetch_count = $prefetch_count;
+        return $this;
+    }
+
+    public function setQueue()
+    {
+        $this->queue = $this->queue_info['name'];
+        return $this;
+    }
+
+    public function setQueueAttributes()
+    {
+        $this->queue_attributes = $this->queue_info['attributes'];
+        return $this;
+    }
+    public function setQueueBind()
+    {
+        $this->queue_binds = $this->queue_attributes['binds'];
+        return $this;
+    }
+
+    public function setExchange()
+    {
+        $this->exchange = $this->exchange_info['name'];
+        return $this;
+    }
+
+    public function getExchangeType()
+    {
+        $this->exchange_type = $this->attributes['exchange_type'];
+        return $this;
+    }
+
+    public function setExchangeInfo($exchange)
+    {
+        $this->exchange_info = $this->exchanges[$exchange];
+        return $this;
+    }
+
+    public function setBind()
+    {
+        $this->binds = $this->attributes['binds'];
+        return $this;
+    }
+
+    public function exchangeDeclare()
+    {
+        $attributes = $this->attributes;
+        $this->exchange_declare(
+            $this->exchange,
+            $attributes['exchange_type'],
+            $attributes['passive'],
+            $attributes['durable'],
+            $attributes['auto_delete'],
+            $attributes['internal'],
+            $attributes['nowait'],
+        );
+        return $this;
+    }
+
+    public function setExchangeAttributes()
+    {
+        $this->attributes = $this->exchange_info['attributes'];
         return $this;
     }
 
     /**
      * 生产消息（支持多条消息）
      */
-    public function publish($messages, $routingKey = null)
+    public function publish($messages)
     {
-        $this->queueDeclareBind($routingKey);
-        foreach ($messages as $message) {
-            $this->batch_basic_publish(
-                (new Message($message))->getAMQPMessage(), $this->exchange, $routingKey
-            );
+        foreach ($this->binds as $bind) {
+            $this->queueDeclareBind($bind['queue'], $bind['route_key'] ?? null, $this->exchange);
+            foreach ($messages as $message) {
+                $this->batch_basic_publish(
+                    (new Message($message))->getAMQPMessage(), $this->exchange, $bind['route_key'] ?? null
+                );
+            }
+            $this->publish_batch();
         }
-        $this->publish_batch();
     }
 
     /**
      * 声明队列
      * @param $routingKey
      */
-    protected function queueDeclareBind(&$routingKey)
+    protected function queueDeclareBind($queue, $route_key, $exchange = null)
     {
-        if (is_null($routingKey)) {
-            $routingKey = $this->defaultRoutingKey;
-        }
-        // Create/declare queue
         $this->queue_declare(
-            $routingKey,
-            $this->queue_declare['passive'] ?? false,
-            $this->queue_declare['durable'] ?? true,
+            $queue,
+            false,
+            true,
         );
-
-        if ($this->exchange != "") {
-            // Bind the queue to the exchange
-            $this->queue_bind($routingKey, $this->exchange, $routingKey, $this->nowait ?? false, $this->tale ?? []);
+        if ($exchange) {
+            $this->queue_bind($queue, $exchange, $route_key ?? null, false, []);
         }
         return $this;
     }
+
     protected function setNoWait($nowait = false)
     {
         $this->nowait = false;
@@ -144,78 +217,6 @@ class Broker extends AMQPChannel
     }
 
     /**
-     * @param null $routingKey
-     * @return mixed
-     */
-    public function getQueueInfo($routingKey = null)
-    {
-        if (is_null($routingKey)) {
-            // Set the routing key if missing
-            $routingKey = $this->defaultRoutingKey;
-        }
-
-        $ch    = curl_init();
-        $vhost = ($this->config['vhost'] != "/" ? $this->vhost : "%2F");
-        $url   = "http://" . $this->config['host'] . ":15672" . "/api/queues/$vhost/" . $routingKey;
-
-        curl_setopt($ch, CURLOPT_URL, $url);
-
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-
-        curl_setopt($ch, CURLOPT_USERPWD, $this->config['user'] . ":" . $this->config['password']);
-
-        curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-
-        $result = curl_exec($ch);
-        curl_close($ch);
-
-        return json_decode($result, true);
-    }
-
-    /**
-     * @param $message
-     * @param null $routingKey
-     */
-    public function publishMessage($message, $routingKey = null)
-    {
-        $this->queueDeclareBind($routingKey);
-        $msg = new Message($message, $routingKey, $this->message_options ?? []);
-        // Create the message
-        $amqpMessage = $msg->getAMQPMessage();
-        $this->basic_publish($amqpMessage, $this->exchange, $routingKey);
-    }
-    /**
-     * 消息属性
-     */
-    public function setMessageOptions($options)
-    {
-        $this->message_options = $options;
-        return $this;
-    }
-
-    /**
-     * @param callable $callback
-     * @param null $routingKey
-     * @param array $options
-     * @return bool
-     */
-    public function basicConsume($routingKey = null, $options = [])
-    {
-        $this->queueDeclareBind($routingKey);
-
-        $this->basic_consume(
-            $routingKey,
-            '',
-            false,
-            false,
-            false,
-            false,
-        );
-
-        return $this->waitConsume($options);
-    }
-
-    /**
      * Starts to listen to a queue for incoming messages.
      * @param array $handlers Array of handler class instances
      * @param null $routingKey
@@ -223,11 +224,10 @@ class Broker extends AMQPChannel
      * @return bool
      * @internal param string $queueName The AMQP queue
      */
-    public function listenToQueue(array $handlers, $routingKey = null, $options = [])
+    public function listenToQueue()
     {
-        /* Look for handlers */
-        $handlersMap = array();
-        foreach ($handlers as $handlerClassPath) {
+        $handlersMap = [];
+        foreach ($this->handlers as $handlerClassPath) {
             if (!class_exists($handlerClassPath)) {
                 $handlerClassPath = "Guandeng\\Rabbitmq\\Handlers\\DefaultHandler";
                 if (!class_exists($handlerClassPath)) {
@@ -240,27 +240,28 @@ class Broker extends AMQPChannel
             $classPathParts                                           = explode("\\", $handlerClassPath);
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
-        $this->queueDeclareBind($routingKey);
-        /* Start consuming */
-        // prefetch_count 1表示发送一条消息
-        $this->basic_qos(
-            (isset($options["prefetch_size"]) ? $options["prefetch_size"] : null),
-            (isset($options["prefetch_count"]) ? $options["prefetch_count"] : 1),
-            (isset($options["a_global"]) ? $options["a_global"] : null)
-        );
-        $this->basic_consume(
-            $routingKey,
-            (isset($options["consumer_tag"]) ? $options["consumer_tag"] : ''),
-            (isset($options["no_local"]) ? (bool) $options["no_local"] : false),
-            (isset($options["no_ack"]) ? (bool) $options["no_ack"] : false),
-            (isset($options["exclusive"]) ? (bool) $options["exclusive"] : false),
-            (isset($options["no_wait"]) ? (bool) $options["no_wait"] : false),
-            function (AMQPMessage $amqpMsg) use ($handlersMap) {
-                $msg = Message::fromAMQPMessage($amqpMsg);
-                $this->handleMessage($msg, $handlersMap);
-            }
-        );
-        return $this->waitConsume($options);
+        foreach ($this->queue_binds as $bind) {
+            $this->queueDeclareBind($this->queue, $bind['route_key']??'', $bind['exchange']);
+            // prefetch_count 1表示发送一条消息
+            $this->basic_qos(
+                ($this->prefetch_size ?? null),
+                ($this->prefetch_count ?? 1),
+                ($this->a_global ?? null)
+            );
+            $this->basic_consume(
+                $this->queue,
+                ($this->consumer_tag ?? ''),
+                ($this->no_local ?? false),
+                ($this->no_ack ?? false),
+                ($this->exclusive ?? false),
+                ($this->no_wait ?? false),
+                function (AMQPMessage $amqpMsg) use ($handlersMap) {
+                    $msg = Message::fromAMQPMessage($amqpMsg);
+                    $this->handleMessage($msg, $handlersMap);
+                }
+            );
+            return $this->waitConsume();
+        }
     }
 
     /**
@@ -347,29 +348,5 @@ class Broker extends AMQPChannel
         }
         return true;
     }
-    /**
-     * Recursively filter only null values.
-     *
-     * @param array $array
-     * @return array
-     */
-    private function filter(array $array): array
-    {
-        foreach ($array as $index => &$value) {
-            if (is_array($value)) {
-                $value = $this->filter($value);
 
-                continue;
-            }
-
-            // If the value is null then remove it.
-            if ($value === null) {
-                unset($array[$index]);
-
-                continue;
-            }
-        }
-
-        return $array;
-    }
 }

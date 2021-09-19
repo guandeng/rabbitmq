@@ -12,14 +12,14 @@ class ConsumerRabbitMQCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'consumer:rabbitmq';
+    protected $signature = 'consumer:rabbitmq {consumer}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = '处理异步rabbit消息';
+    protected $description = '处理异步rabbitmq消息';
 
     /**
      * Create a new command instance.
@@ -33,12 +33,20 @@ class ConsumerRabbitMQCommand extends Command
      *
      * @return mixed
      */
-    public function handle()
+    public function handle(Broker $rabbitmq)
     {
         $this->info('开始监听RabbitMQ消息...');
-        $handlers = ["\\App\\QueueHandlers\\MyHandler"];
-        \RabbitMQ::setExchange('myExchange');
-        \RabbitMQ::listenToQueue($handlers,'test4');
-        return $this;
+        $consumer = $this->input->getArgument('consumer');
+        if (!array_key_exists($consumer, config('rabbitmq.consumers'))) {
+            $this->output->error(':消费者不存在:'.$consumer);
+            return -1;
+        }
+        $rabbitmq->queue(config('rabbitmq.consumers.'.$consumer))->listenToQueue();
+
+        // foreach ($consumers as $consumer => $queue_info) {
+        //     info($queue_info);
+        //     $rabbitmq->queue($queue_info)->listenToQueue();
+        // }
+        // return $this;
     }
 }
