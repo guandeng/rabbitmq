@@ -22,6 +22,23 @@ class Broker extends AMQPChannel
     public $queue_declare  = [];
     public $consumeTimeout = 0;
 
+    public $exchange_attribute = [
+        'passive'     => false,
+        'durable'     => true, //交换器持久化
+        'auto_delete' => false,
+        'internal'    => false,
+        'nowait'      => false,
+    ];
+    public $queue_attribute = [
+        'passive'       => false,
+        'durable'       => true, //队列持久化
+        'auto_delete'   => false,
+        'internal'      => false,
+        'nowait'        => false,
+        'exclusive'     => false,
+        'delivery_mode' => 2,
+    ];
+
     public function __construct()
     {
         $this->app       = app();
@@ -49,6 +66,7 @@ class Broker extends AMQPChannel
     {
         $this->queue_declare = $queue_declare;
     }
+
     /**
      * 创建连接
      */
@@ -135,6 +153,14 @@ class Broker extends AMQPChannel
         return $this;
     }
 
+    public function setMessageConfig()
+    {
+        $this->message_config = [
+            'delivery_mode' => $this->queue_attribute['delivery_mode'],
+        ];
+        return $this;
+    }
+
     public function setExchange()
     {
         $this->exchange = $this->exchange_info['name'];
@@ -186,10 +212,12 @@ class Broker extends AMQPChannel
     public function publish($messages)
     {
         foreach ($this->binds as $bind) {
-            $this->queueDeclareBind($bind['queue'], $bind['routing_key'] ?? null, $this->exchange);
+            $this->queueDeclareBind($bind['queue'], $bind['routing_key'] ?? '', $this->exchange);
             foreach ($messages as $message) {
                 $this->batch_basic_publish(
-                    (new Message($message))->getAMQPMessage(), $this->exchange, $bind['routing_key'] ?? null
+                    (new Message($message, $bind['routing_key'] ?? '', $this->message_config))->getAMQPMessage(),
+                    $this->exchange,
+                    $bind['routing_key'] ?? ''
                 );
             }
             $this->publish_batch();
@@ -198,17 +226,26 @@ class Broker extends AMQPChannel
 
     /**
      * 声明队列
-     * @param $routingKey
+     * @param $queue
+     * @param $routing_key
+     * @param $exchange
      */
     protected function queueDeclareBind($queue, $routing_key, $exchange = null)
     {
+        $this->setMessageConfig();
         $this->queue_declare(
             $queue,
-            false,
-            true,
+            $this->queue_attribute['passive'],
+            $this->queue_attribute['durable'],
         );
         if ($exchange) {
-            $this->queue_bind($queue, $exchange, $routing_key ?? null, false, []);
+            $this->queue_bind(
+                $queue,
+                $exchange,
+                $routing_key ?? null,
+                false,
+                []
+            );
         }
         return $this;
     }
