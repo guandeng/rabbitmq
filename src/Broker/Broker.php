@@ -83,7 +83,6 @@ class Broker extends AMQPChannel
      * 队列设置
      *
      * @param array $queue_info
-     * @return void
      */
     public function queue(array $queue_info)
     {
