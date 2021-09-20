@@ -35,18 +35,12 @@ class ConsumerRabbitMQCommand extends Command
      */
     public function handle(Broker $rabbitmq)
     {
-        $this->info('开始监听RabbitMQ消息...');
+        $this->info('开始监听RabbitMQ接收消息...');
         $consumer = $this->input->getArgument('consumer');
         if (!array_key_exists($consumer, config('rabbitmq.consumers'))) {
             $this->output->error(':消费者不存在:'.$consumer);
             return -1;
         }
-        $rabbitmq->queue(config('rabbitmq.consumers.'.$consumer))->listenToQueue();
-
-        // foreach ($consumers as $consumer => $queue_info) {
-        //     info($queue_info);
-        //     $rabbitmq->queue($queue_info)->listenToQueue();
-        // }
-        // return $this;
+        $rabbitmq->queue(config('rabbitmq.consumers.'.$consumer))->consume();
     }
 }

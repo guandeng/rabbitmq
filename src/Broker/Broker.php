@@ -63,7 +63,12 @@ class Broker extends AMQPChannel
             $this->config['vhost'],
         );
     }
-
+    /**
+     * 交换器设置
+     *
+     * @param [type] $exchange
+     * @return void
+     */
     public function exchange($exchange)
     {
         $this->setExchangeInfo($exchange);
@@ -74,6 +79,12 @@ class Broker extends AMQPChannel
         return $this;
     }
 
+    /**
+     * 队列设置
+     *
+     * @param array $queue_info
+     * @return void
+     */
     public function queue(array $queue_info)
     {
         $this->setQueueInfo($queue_info['queue']);
@@ -84,7 +95,12 @@ class Broker extends AMQPChannel
         $this->setQueueBind();
         return $this;
     }
-
+    /**
+     * 队列信息
+     *
+     * @param [type] $queue
+     * @return void
+     */
     public function setQueueInfo($queue)
     {
         $this->queue_info = $this->queues[$queue];
@@ -166,15 +182,15 @@ class Broker extends AMQPChannel
     }
 
     /**
-     * 生产消息（支持多条消息）
+     * 生产消息
      */
     public function publish($messages)
     {
         foreach ($this->binds as $bind) {
-            $this->queueDeclareBind($bind['queue'], $bind['route_key'] ?? null, $this->exchange);
+            $this->queueDeclareBind($bind['queue'], $bind['routing_key'] ?? null, $this->exchange);
             foreach ($messages as $message) {
                 $this->batch_basic_publish(
-                    (new Message($message))->getAMQPMessage(), $this->exchange, $bind['route_key'] ?? null
+                    (new Message($message))->getAMQPMessage(), $this->exchange, $bind['routing_key'] ?? null
                 );
             }
             $this->publish_batch();
@@ -185,7 +201,7 @@ class Broker extends AMQPChannel
      * 声明队列
      * @param $routingKey
      */
-    protected function queueDeclareBind($queue, $route_key, $exchange = null)
+    protected function queueDeclareBind($queue, $routing_key, $exchange = null)
     {
         $this->queue_declare(
             $queue,
@@ -193,7 +209,7 @@ class Broker extends AMQPChannel
             true,
         );
         if ($exchange) {
-            $this->queue_bind($queue, $exchange, $route_key ?? null, false, []);
+            $this->queue_bind($queue, $exchange, $routing_key ?? null, false, []);
         }
         return $this;
     }
@@ -224,7 +240,7 @@ class Broker extends AMQPChannel
      * @return bool
      * @internal param string $queueName The AMQP queue
      */
-    public function listenToQueue()
+    public function consume()
     {
         $handlersMap = [];
         foreach ($this->handlers as $handlerClassPath) {
@@ -241,7 +257,7 @@ class Broker extends AMQPChannel
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         foreach ($this->queue_binds as $bind) {
-            $this->queueDeclareBind($this->queue, $bind['route_key']??'', $bind['exchange']);
+            $this->queueDeclareBind($this->queue, $bind['routing_key'] ?? '', $bind['exchange']);
             // prefetch_count 1表示发送一条消息
             $this->basic_qos(
                 ($this->prefetch_size ?? null),

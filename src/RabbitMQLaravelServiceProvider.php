@@ -11,6 +11,7 @@ class RabbitMQLaravelServiceProvider extends ServiceProvider
      */
     protected $commands = [
         Console\ConsumerRabbitMQCommand::class,
+        Console\PublisherRabbitMQCommand::class,
     ];
 
     /**

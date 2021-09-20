@@ -1,16 +1,18 @@
 {
     "name": "guandeng/rabbitmq",
-    "autoload": {
-        "psr-4": {
-            "Guandeng\\Rabbitmq\\": "src/"
-        }
-    },
+    "description": "Laravel RabbitMQ",
+    "license": "MIT",
     "authors": [
         {
             "name": "guandeng",
             "email": "guandeng@hotmail.com"
         }
     ],
+    "autoload": {
+        "psr-4": {
+            "Guandeng\\Rabbitmq\\": "src/"
+        }
+    },
     "require": {
         "php": "^7.1",
         "ext-json": "*",
