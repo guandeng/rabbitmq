@@ -471,36 +471,21 @@ class Broker extends AMQPChannel
                     return $handler->handleSucceedStop($msg);
 
                 case Handler::RV_SUCCEED_CONTINUE:
-                    /* Handler succeeded, you SHOULD continue processing */
                     $handler->handleSucceedContinue($msg);
                     break;
                 case Handler::RV_PASS:
-                    /**
-                     * Just continue processing (I have no idea what
-                     * happened in the handler)
-                     */
                     break;
 
                 case Handler::RV_FAILED_STOP:
-                    /* Handler failed and MUST stop processing */
                     return $handler->handleFailedStop($msg);
 
                 case Handler::RV_FAILED_REQUEUE:
-                    /**
-                     * Handler failed and MUST stop processing but the message
-                     * will be rescheduled
-                     */
                     return $handler->handleFailedRequeue($msg);
 
                 case Handler::RV_FAILED_REQUEUE_STOP:
-                    /**
-                     * Handler failed and MUST stop processing but the message
-                     * will be rescheduled
-                     */
                     return $handler->handleFailedRequeueStop($msg, true);
 
                 case Handler::RV_FAILED_CONTINUE:
-                    /* Well, handler failed, but you may try another */
                     $handler->handleFailedContinue($msg);
                     break;
 
@@ -509,7 +494,6 @@ class Broker extends AMQPChannel
             }
 
         }
-        /* If haven't return yet, send an ACK */
         $msg->sendAck();
     }
 
@@ -522,9 +506,8 @@ class Broker extends AMQPChannel
         $consume = true;
         while (count($this->callbacks) && $consume) {
             try {
-                $options["non_blocking"] = true;
-                $allowed_methods         = $options["allowed_methods"] ?? null;
-                $non_blocking            = $options["non_blocking"] ?? false;
+                $allowed_methods = $options["allowed_methods"] ?? null;
+                $non_blocking    = $options["non_blocking"] ?? true;
                 $this->wait($allowed_methods, $non_blocking, $this->consumeTimeout);
             } catch (AMQPTimeoutException $e) {
                 if ($e->getMessage() === "The connection timed out after {$this->consumeTimeout} sec while awaiting incoming data") {
