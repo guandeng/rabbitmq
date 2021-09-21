@@ -8,30 +8,29 @@ use Guandeng\Rabbitmq\Message\Message;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
-use PhpAmqpLib\Exchange\AMQPExchangeType;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 
 class Broker extends AMQPChannel
 {
-    public $config;
-    public $connect;
-    public $defaultRoutingKey;
-    public $exchange;
-    public $exchange_declare;
-    public $queue_declare   = [];
-    public $consumeTimeout  = 0;
-    public static $consumer = 1;
-    public static $pulisher = 2;
+    protected $config;
+    protected $connect;
+    protected $defaultRoutingKey;
+    protected $exchange;
+    protected $exchange_declare;
+    protected $queue_declare   = [];
+    protected $consumeTimeout  = 0;
+    protected static $consumer = 1;
+    protected static $pulisher = 2;
 
-    public $exchange_attributes = [
+    protected $exchange_attributes = [
         'passive'     => false,
         'durable'     => true, //交换器持久化
         'auto_delete' => false,
         'internal'    => false,
         'nowait'      => false,
     ];
-    public $queue_attributes = [
+    protected $queue_attributes = [
         'passive'     => false,
         'durable'     => true, //队列持久化
         'auto_delete' => true,
@@ -74,13 +73,21 @@ class Broker extends AMQPChannel
     public function createConnet()
     {
         //创建连接
-        $this->connect = new AMQPStreamConnection(
-            $this->config['host'],
-            $this->config['port'],
-            $this->config['user'],
-            $this->config['password'],
-            $this->config['vhost'],
-        );
+        try {
+            $this->connect = new AMQPStreamConnection(
+                $this->config['host'],
+                $this->config['port'],
+                $this->config['user'],
+                $this->config['password'],
+                $this->config['vhost'],
+            );
+        } catch (\Exception $e) {
+            throw new BrokerException(
+                '连接失败: '
+                . $e->getMessage(),
+                $e->getCode()
+            );
+        }
     }
     /**
      * 交换器设置
@@ -94,7 +101,7 @@ class Broker extends AMQPChannel
         $this->setExchange();
         $this->setExchangeAttributes();
         $this->setExchangeBind();
-        $this->exchangeDeclare();
+        $this->exchangeDeclare($this->exchange);
         return $this;
     }
 
@@ -257,15 +264,6 @@ class Broker extends AMQPChannel
      */
     public function getExchangeType()
     {
-        if (!in_array($this->exchange_attributes['exchange_type'],
-            [
-                AMQPExchangeType::DIRECT,
-                AMQPExchangeType::FANOUT,
-                AMQPExchangeType::TOPIC,
-            ]
-        )) {
-            return false;
-        }
         $this->exchange_type = $this->exchange_attributes['exchange_type'];
         return $this;
     }
@@ -298,18 +296,23 @@ class Broker extends AMQPChannel
      *
      * @return void
      */
-    public function exchangeDeclare()
+    public function exchangeDeclare($exchange)
     {
-        $attributes = $this->exchange_attributes;
-        $this->exchange_declare(
-            $this->exchange,
-            $attributes['exchange_type'],
-            $attributes['passive'],
-            $attributes['durable'],
-            $attributes['auto_delete'],
-            $attributes['internal'],
-            $attributes['nowait'],
-        );
+        dump($exchange,$this->exchange_attributes);
+        if ($this->exchange_attributes) {
+            $attributes = $this->exchange_attributes;
+            $this->exchange_declare(
+                $exchange,
+                $attributes['exchange_type'],
+                $attributes['passive'],
+                $attributes['durable'],
+                $attributes['auto_delete'],
+                $attributes['internal'],
+                $attributes['nowait'],
+            );
+        } else {
+            $this->exchange_declare($exchange, 'direct');
+        }
         return $this;
     }
 
@@ -349,6 +352,24 @@ class Broker extends AMQPChannel
         }
     }
 
+    protected function setNoWait($nowait = false)
+    {
+        $this->nowait = false;
+        return $this;
+    }
+    /**
+     * 延迟绑定设置
+     */
+    public function setDeadLettle($delayExName, $ttl, $queueName)
+    {
+        $this->tale = new AMQPTable([
+            'x-dead-letter-exchange'    => $delayExName,
+            'x-message-ttl'             => $ttl, //消息存活时间，单位毫秒
+            'x-dead-letter-routing-key' => $queueName,
+        ]);
+        return $this;
+    }
+
     /**
      * 声明队列
      * @param $queue
@@ -375,34 +396,13 @@ class Broker extends AMQPChannel
             $this->queue_attributes['nowait'],
             $this->amqp_table ?? [],
         );
-        // dd($queue,$this->queue_attributes,$this->amqp_table);
-        if ($exchange) {
-            $this->queue_bind(
-                $queue,
-                $exchange,
-                $routing_key ?? null,
-                false,
-                []
-            );
-        }
-        return $this;
-    }
-
-    protected function setNoWait($nowait = false)
-    {
-        $this->nowait = false;
-        return $this;
-    }
-    /**
-     * 延迟绑定设置
-     */
-    public function setDeadLettle($delayExName, $ttl, $queueName)
-    {
-        $this->tale = new AMQPTable([
-            'x-dead-letter-exchange'    => $delayExName,
-            'x-message-ttl'             => $ttl, //消息存活时间，单位毫秒
-            'x-dead-letter-routing-key' => $queueName,
-        ]);
+        $this->queue_bind(
+            $queue,
+            $exchange,
+            $routing_key ?? null,
+            false,
+            []
+        );
         return $this;
     }
 
@@ -431,8 +431,9 @@ class Broker extends AMQPChannel
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         foreach ($this->queue_binds as $bind) {
+            // 交换器设置
+            $this->exchange($bind['exchange']);
             $this->queueDeclareBind(static::$consumer, $this->queue, $bind['routing_key'] ?? '', $this->getExchangeName($bind['exchange']));
-            // prefetch_count 1表示发送一条消息
             $this->basic_qos(
                 ($this->prefetch_size ?? null),
                 ($this->prefetch_count ?? 1),

@@ -43,9 +43,7 @@ class PublisherRabbitMQCommand extends Command
             return -1;
         }
         $message = [
-            [
-                $message,
-            ],
+            $message
         ];
         $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish($message);
         $this->info(json_encode($message));
