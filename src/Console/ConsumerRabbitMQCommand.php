@@ -38,7 +38,7 @@ class ConsumerRabbitMQCommand extends Command
         $this->info('开始监听RabbitMQ接收消息...');
         $consumer = $this->input->getArgument('consumer');
         if (!array_key_exists($consumer, config('rabbitmq.consumers'))) {
-            $this->output->error(':消费者不存在:'.$consumer);
+            $this->output->error('消费者不存在:'.$consumer);
             return -1;
         }
         $rabbitmq->queue(config('rabbitmq.consumers.'.$consumer))->consume();

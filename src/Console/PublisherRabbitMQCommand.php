@@ -35,7 +35,7 @@ class PublisherRabbitMQCommand extends Command
      */
     public function handle(Broker $rabbitmq)
     {
-        $this->info('开始监听RabbitMQ发送消息...');
+        $this->info('开始发送RabbitMQ消息...');
         $publisher = $this->input->getArgument('publisher');
         $message   = $this->input->getArgument('message');
         if (!array_key_exists($publisher, config('rabbitmq.publishers'))) {
@@ -47,6 +47,7 @@ class PublisherRabbitMQCommand extends Command
                 $message,
             ],
         ];
-        $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish([$message]);
+        $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish($message);
+        $this->info(json_encode($message));
     }
 }

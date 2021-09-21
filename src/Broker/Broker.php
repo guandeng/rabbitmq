@@ -5,10 +5,10 @@ namespace Guandeng\Rabbitmq\Broker;
 use Guandeng\Rabbitmq\Exception\BrokerException;
 use Guandeng\Rabbitmq\Handlers\Handler;
 use Guandeng\Rabbitmq\Message\Message;
-use Illuminate\Support\Arr;
 use PhpAmqpLib\Channel\AMQPChannel;
 use PhpAmqpLib\Connection\AMQPStreamConnection;
 use PhpAmqpLib\Exception\AMQPTimeoutException;
+use PhpAmqpLib\Exchange\AMQPExchangeType;
 use PhpAmqpLib\Message\AMQPMessage;
 use PhpAmqpLib\Wire\AMQPTable;
 
@@ -19,17 +19,19 @@ class Broker extends AMQPChannel
     public $defaultRoutingKey;
     public $exchange;
     public $exchange_declare;
-    public $queue_declare  = [];
-    public $consumeTimeout = 0;
+    public $queue_declare   = [];
+    public $consumeTimeout  = 0;
+    public static $consumer = 1;
+    public static $pulisher = 2;
 
-    public $exchange_attribute = [
+    public $exchange_attributes = [
         'passive'     => false,
         'durable'     => true, //交换器持久化
         'auto_delete' => false,
         'internal'    => false,
         'nowait'      => false,
     ];
-    public $queue_attribute = [
+    public $queue_attributes = [
         'passive'     => false,
         'durable'     => true, //队列持久化
         'auto_delete' => true,
@@ -84,7 +86,7 @@ class Broker extends AMQPChannel
      * 交换器设置
      *
      * @param [type] $exchange
-     * @return void
+     * @return object
      */
     public function exchange($exchange)
     {
@@ -101,14 +103,27 @@ class Broker extends AMQPChannel
      *
      * @param array $queue_info
      */
-    public function queue(array $queue_info)
+    public function queue(array $consumer_info)
     {
-        $this->setQueueInfo($queue_info['queue']);
-        $this->setHandlers($queue_info['handlers']);
-        $this->setPrefetchCount($queue_info['prefetch_count']);
+        $this->setConsumer($consumer_info);
+        $this->setQueueInfo();
+        $this->setHandlers();
+        $this->setPrefetchCount();
         $this->setQueue();
         $this->setQueueAttributes();
         $this->setQueueBind();
+        return $this;
+    }
+
+    /**
+     * 消费者信息
+     *
+     * @param array $consumer
+     * @return void
+     */
+    public function setConsumer(array $consumer_info)
+    {
+        $this->consumer_info = $consumer_info;
         return $this;
     }
     /**
@@ -117,89 +132,172 @@ class Broker extends AMQPChannel
      * @param [type] $queue
      * @return void
      */
-    public function setQueueInfo($queue)
+    public function setQueueInfo($queue = null)
     {
-        $this->queue_info = $this->queues[$queue];
+        if ($queue) {
+            $this->queue_info = $this->queues[$queue];
+        } else {
+            $this->queue_info = $this->queues[$this->consumer_info['queue']];
+        }
         return $this;
     }
-
+    /**
+     *
+     *
+     * @param [type] $queue
+     * @return void
+     */
     public function getQueueName($queue)
     {
         return $this->queues[$queue]['name'] ?? null;
     }
 
+    /**
+     * 交换器名称
+     *
+     * @param [type] $exchange
+     * @return void
+     */
     public function getExchangeName($exchange)
     {
         return $this->exchanges[$exchange]['name'] ?? null;
     }
 
-    public function setHandlers($handlers)
+    /**
+     * 回调接口
+     *
+     * @return void
+     */
+    public function setHandlers()
     {
-        $this->handlers = $handlers;
+        $this->handlers = $this->consumer_info['handlers'];
         return $this;
     }
 
-    public function setPrefechCount($prefetch_count)
+    /**
+     * 可接收最大数量
+     *
+     * @param [intger] $prefetch_count
+     * @return void
+     */
+    public function setPrefetchCount()
     {
-        $this->prefetch_count = $prefetch_count;
+        $this->prefetch_count = $this->consumer_info['prefetch_count'];
         return $this;
     }
 
+    /**
+     * 设置队列
+     *
+     * @return void
+     */
     public function setQueue()
     {
         $this->queue = $this->queue_info['name'];
         return $this;
     }
 
+    /**
+     * 队列属性
+     *
+     * @return void
+     */
     public function setQueueAttributes()
     {
-        $this->queue_attributes = $this->queue_info['attributes'];
+        $this->queue_attributes = array_merge($this->queue_attributes, $this->queue_info['attributes'] ?? []);
         return $this;
     }
+
+    /**
+     * 队列绑定交换器
+     *
+     * @return void
+     */
     public function setQueueBind()
     {
         $this->queue_binds = $this->queue_attributes['binds'];
         return $this;
     }
+
+    /**
+     * 消息属性配置
+     *
+     * @return void
+     */
     public function setMessageConfig()
     {
         $this->message_config = [
-            'delivery_mode' => $this->exchange_attribute['message']['delivery_mode'] ?? null,
-            'expiration'    => $this->exchange_attribute['message']['expiration'] ?? null,
+            'delivery_mode' => $this->exchange_attributes['message']['delivery_mode'] ?? null,
+            'expiration'    => $this->exchange_attributes['message']['expiration'] ?? null,
         ];
         return $this;
     }
 
     public function setAmqpTable()
     {
-        $this->amqp_table = $this->exchange_attribute['amqp_table'] ?? [];
+        $this->amqp_table = $this->exchange_attributes['amqp_table'] ?? [];
         return $this;
     }
 
+    /**
+     * 交换器名称
+     *
+     * @return void
+     */
     public function setExchange()
     {
         $this->exchange = $this->exchange_info['name'];
         return $this;
     }
 
+    /**
+     * 交换器模式
+     *
+     * @return void
+     */
     public function getExchangeType()
     {
+        if (!in_array($this->exchange_attributes['exchange_type'],
+            [
+                AMQPExchangeType::DIRECT,
+                AMQPExchangeType::FANOUT,
+                AMQPExchangeType::TOPIC,
+            ]
+        )) {
+            return false;
+        }
         $this->exchange_type = $this->exchange_attributes['exchange_type'];
         return $this;
     }
 
+    /**
+     * 交换器信息
+     *
+     * @param [type] $exchange
+     * @return void
+     */
     public function setExchangeInfo($exchange)
     {
         $this->exchange_info = $this->exchanges[$exchange];
         return $this;
     }
 
+    /**
+     * 交换器绑定
+     *
+     * @return void
+     */
     public function setExchangeBind()
     {
         $this->exchange_binds = $this->exchange_attributes['binds'];
         return $this;
     }
 
+    /**
+     * 交换器声明
+     *
+     * @return void
+     */
     public function exchangeDeclare()
     {
         $attributes = $this->exchange_attributes;
@@ -215,9 +313,17 @@ class Broker extends AMQPChannel
         return $this;
     }
 
+    /**
+     * 交换器属性
+     *
+     * @return void
+     */
     public function setExchangeAttributes()
     {
-        $this->exchange_attributes = $this->exchange_info['attributes'];
+        $this->exchange_attributes = array_merge(
+            $this->exchange_attributes,
+            $this->exchange_info['attributes'] ?? []
+        );
         return $this;
     }
 
@@ -227,14 +333,18 @@ class Broker extends AMQPChannel
     public function publish($messages)
     {
         foreach ($this->exchange_binds as $bind) {
-            $this->queueDeclareBind($bind['queue'], $bind['routing_key'] ?? '', $this->exchange);
-            foreach ($messages as $message) {
-                $this->batch_basic_publish(
-                    (new Message($message, $bind['routing_key'] ?? '', $this->message_config))->getAMQPMessage(),
-                    $this->exchange,
-                    $bind['routing_key'] ?? ''
-                );
-            }
+            $this->queueDeclareBind(static::$pulisher, $bind['queue'], $bind['routing_key'] ?? '', $this->exchange);
+            $this->batch_basic_publish(
+                (
+                    new Message(
+                        $messages,
+                        $bind['routing_key'] ?? '',
+                        $this->message_config ?? []
+                    )
+                )->getAMQPMessage(),
+                $this->exchange,
+                $bind['routing_key'] ?? ''
+            );
             $this->publish_batch();
         }
     }
@@ -245,11 +355,12 @@ class Broker extends AMQPChannel
      * @param $routing_key
      * @param $exchange
      */
-    protected function queueDeclareBind($queue, $routing_key, $exchange = null)
+    protected function queueDeclareBind(int $bind_type, $queue, $routing_key, $exchange = null)
     {
         $this->setMessageConfig();
         $this->setAmqpTable();
-        if (!isset($this->queue_attributes)) {
+        // 生产者绑定
+        if ($bind_type == static::$pulisher) {
             $this->setQueueInfo($queue);
             $this->setQueue();
             $this->setQueueAttributes();
@@ -259,11 +370,12 @@ class Broker extends AMQPChannel
             $queue,
             $this->queue_attributes['passive'],
             $this->queue_attributes['durable'],
-            $this->queue_attributes['exclusive'] ?? false,
-            $this->queue_attributes['auto_delete'] ?? true,
-            $this->queue_attributes['nowait'] ?? false,
-            $this->amqp_table,
+            $this->queue_attributes['exclusive'],
+            $this->queue_attributes['auto_delete'],
+            $this->queue_attributes['nowait'],
+            $this->amqp_table ?? [],
         );
+        // dd($queue,$this->queue_attributes,$this->amqp_table);
         if ($exchange) {
             $this->queue_bind(
                 $queue,
@@ -319,7 +431,7 @@ class Broker extends AMQPChannel
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         foreach ($this->queue_binds as $bind) {
-            $this->queueDeclareBind($this->queue, $bind['routing_key'] ?? '', $this->getExchangeName($bind['exchange']));
+            $this->queueDeclareBind(static::$consumer, $this->queue, $bind['routing_key'] ?? '', $this->getExchangeName($bind['exchange']));
             // prefetch_count 1表示发送一条消息
             $this->basic_qos(
                 ($this->prefetch_size ?? null),
@@ -426,5 +538,4 @@ class Broker extends AMQPChannel
         }
         return true;
     }
-
 }
