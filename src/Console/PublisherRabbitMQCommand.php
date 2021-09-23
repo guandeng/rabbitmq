@@ -42,10 +42,11 @@ class PublisherRabbitMQCommand extends Command
             $this->output->error('生产者不存在:' . $publisher);
             return -1;
         }
-        $message = [
-            $message
-        ];
-        $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish($message);
-        $this->info(json_encode($message));
+        for ($i = 0; $i < 1; $i++) {
+            $msgs = [];
+            array_push($msgs,$message.$i);
+            $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish($msgs);
+        }
+        $this->info(json_encode($msgs));
     }
 }

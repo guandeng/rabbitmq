@@ -328,26 +328,17 @@ class Broker extends AMQPChannel
     /**
      * 生产消息
      */
-    public function publish($messages)
+    public function publish(array $messages)
     {
         foreach ($this->exchange_binds as $bind) {
-            $this->queueDeclareBind(static::$pulisher, $bind['queue'], $bind['routing_key'] ?? '', $this->exchange);
-            $this->batch_basic_publish(
-                (
-                    new Message(
-                        $messages,
-                        $bind['routing_key'] ?? '',
-                        $this->message_config ?? []
-                    )
-                )->getAMQPMessage(),
-                $this->exchange,
-                $bind['routing_key'] ?? ''
-            );
-            $this->publish_batch();
+            $routing_key = $bind['routing_key'] ?? '';
+            $msg         = new Message($messages, $routing_key, $this->message_config ?? []);
+            $amqpMessage = $msg->getAMQPMessage();
+            $this->basic_publish($amqpMessage, $this->exchange, $routing_key);
         }
     }
 
-    protected function setNoWait($nowait = false)
+    protected function setNoWait()
     {
         $this->nowait = false;
         return $this;
@@ -382,6 +373,7 @@ class Broker extends AMQPChannel
             $this->setQueueAttributes();
             $queue = $this->getQueueName($queue);
         }
+        // 初始化队列
         $this->queue_declare(
             $queue,
             $this->queue_attributes['passive'],
@@ -395,8 +387,6 @@ class Broker extends AMQPChannel
             $queue,
             $exchange,
             $routing_key ?? null,
-            false,
-            []
         );
         return $this;
     }
@@ -426,7 +416,7 @@ class Broker extends AMQPChannel
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         foreach ($this->queue_binds as $bind) {
-            // \Log::channel('single')->info($bind);
+            \Log::channel('single')->info($bind);
             // 交换器设置
             $this->exchange($bind['exchange']);
             $this->queueDeclareBind(static::$consumer, $this->queue, $bind['routing_key'] ?? '', $this->getExchangeName($bind['exchange']));
@@ -462,12 +452,10 @@ class Broker extends AMQPChannel
         if (is_string($handlersMap)) {
             $handlersMap = [$handlersMap];
         }
-        /* Try to process the message */
         foreach ($handlersMap as $handler) {
             $retVal = $handler->process($msg);
             switch ($retVal) {
                 case Handler::RV_SUCCEED_STOP:
-                    /* Handler succeeded, you MUST stop processing */
                     return $handler->handleSucceedStop($msg);
 
                 case Handler::RV_SUCCEED_CONTINUE:
