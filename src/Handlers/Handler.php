@@ -117,12 +117,13 @@ abstract class Handler
      */
     public function handleFailedStop(Message $msg)
     {
+        info("reject handleFailedStop");
         $msg->sendNack();
-        throw new HandlerException(
-            "Handler failed for message"
-            . " {$msg->getDeliveryTag()}."
-            . " Execution stopped but message is not rescheduled."
-        );
+        // throw new HandlerException(
+        //     "Handler failed for message"
+        //     . " {$msg->getDeliveryTag()}."
+        //     . " Execution stopped but message is not rescheduled."
+        // );
     }
 
     /**

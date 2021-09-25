@@ -93,15 +93,18 @@ class Broker extends AMQPChannel
      * 交换器设置
      *
      * @param [type] $exchange
+     * @param [array] $options // 更多属性配置
      * @return object
      */
-    public function exchange($exchange)
+    public function exchange($exchange, array $options = [])
     {
         $this->setExchangeInfo($exchange);
         $this->setExchange();
         $this->setExchangeAttributes();
         $this->setExchangeBind();
         $this->exchangeDeclare($this->exchange);
+        $this->setOptions($options);
+        $this->setMessageConfig();
         return $this;
     }
 
@@ -148,8 +151,9 @@ class Broker extends AMQPChannel
         }
         return $this;
     }
+
     /**
-     *
+     * 获取队列名称
      *
      * @param [type] $queue
      * @return void
@@ -178,6 +182,17 @@ class Broker extends AMQPChannel
     public function setHandlers()
     {
         $this->handlers = $this->consumer_info['handlers'];
+        return $this;
+    }
+
+    /**
+     * 更多参数设置
+     *
+     * @return void
+     */
+    public function setOptions($options)
+    {
+        $this->options = $options;
         return $this;
     }
 
@@ -237,12 +252,18 @@ class Broker extends AMQPChannel
             'delivery_mode' => $this->exchange_attributes['message']['delivery_mode'] ?? null,
             'expiration'    => $this->exchange_attributes['message']['expiration'] ?? null,
         ];
+        // if (array_key_exists('arguments', $this->options)) {
+        //     $this->message_config = array_merge($this->message_config, $this->arguments['x-max-priority']);
+        // }
         return $this;
     }
 
-    public function setAmqpTable()
+    public function setArguments()
     {
-        $this->amqp_table = $this->exchange_attributes['amqp_table'] ?? [];
+        $this->arguments = $this->exchange_attributes['arguments'] ?? [];
+        if (array_key_exists('arguments', $this->options)) {
+            $this->arguments = array_merge($this->arguments, $this->options['arguments']);
+        }
         return $this;
     }
 
@@ -365,7 +386,7 @@ class Broker extends AMQPChannel
     protected function queueDeclareBind(int $bind_type, $queue, $routing_key, $exchange = null)
     {
         $this->setMessageConfig();
-        $this->setAmqpTable();
+        $this->setArguments();
         // 生产者绑定
         if ($bind_type == static::$pulisher) {
             $this->setQueueInfo($queue);
@@ -381,7 +402,7 @@ class Broker extends AMQPChannel
             $this->queue_attributes['exclusive'],
             $this->queue_attributes['auto_delete'],
             $this->queue_attributes['nowait'],
-            $this->amqp_table ?? [],
+            new AMQPTable($this->arguments)
         );
         $this->queue_bind(
             $queue,

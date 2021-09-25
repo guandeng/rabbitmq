@@ -12,7 +12,13 @@ class PublisherRabbitMQCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'publisher:rabbitmq {publisher} {message}';
+    protected $signature = 'publisher:rabbitmq
+                            {publisher}
+                            {message}
+                            {--max-priority=}
+                            {--durable=1}
+                            {--auto-delete=0}
+                            ';
 
     /**
      * The console command description.
@@ -42,10 +48,19 @@ class PublisherRabbitMQCommand extends Command
             $this->output->error('生产者不存在:' . $publisher);
             return -1;
         }
-        for ($i = 0; $i < 1; $i++) {
+        $maxPriority = (int) $this->option('max-priority');
+        if ($maxPriority) {
+            $options['arguments']['x-max-priority'] = $maxPriority;
+        }
+
+        $options['durable']     = (bool) $this->option('durable');
+        $options['auto-delete'] = (bool) $this->option('auto-delete');
+        for ($i = 0; $i < 1000; $i++) {
             $msgs = [];
-            array_push($msgs,$message.$i);
-            $rabbitmq->exchange(config('rabbitmq.publishers.' . $publisher))->publish($msgs);
+            array_push($msgs, $message);
+            $rabbitmq->exchange(
+                config('rabbitmq.publishers.' . $publisher), 
+                $options)->publish($msgs);
         }
         $this->info(json_encode($msgs));
     }
