@@ -437,7 +437,6 @@ class Broker extends AMQPChannel
             $handlersMap[$classPathParts[count($classPathParts) - 1]] = $handlerOb;
         }
         foreach ($this->queue_binds as $bind) {
-            \Log::channel('single')->info($bind);
             // 交换器设置
             $this->exchange($bind['exchange']);
             $this->queueDeclareBind(static::$consumer, $this->queue, $bind['routing_key'] ?? '', $this->getExchangeName($bind['exchange']));
@@ -446,7 +445,6 @@ class Broker extends AMQPChannel
                 ($this->prefetch_count ?? 1),
                 ($this->a_global ?? null)
             );
-            \Log::channel('single')->info($this->queue);
             $this->basic_consume(
                 $this->queue,
                 ($this->consumer_tag ?? ''),

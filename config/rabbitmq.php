@@ -1,7 +1,7 @@
 <?php
 
 return [
-    'hosts'      => [
+    'hosts' => [
         [
             'host'     => env('RABBITMQ_HOST', '127.0.0.1'),
             'port'     => env('RABBITMQ_HOST', 5672),
@@ -10,16 +10,5 @@ return [
             'vhost'    => env('RABBITMQ_VHOST', '/'),
         ],
     ],
-    'exchanges'  => [
-
-    ],
-    'queues'     => [
-
-    ],
-    'publishers' => [
-
-    ],
-    'consumers'  => [
-
-    ],
+    // 更多配置参考rabbitmq_example.php
 ];

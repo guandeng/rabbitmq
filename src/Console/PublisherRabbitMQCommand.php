@@ -59,7 +59,7 @@ class PublisherRabbitMQCommand extends Command
             $msgs = [];
             array_push($msgs, $message);
             $rabbitmq->exchange(
-                config('rabbitmq.publishers.' . $publisher), 
+                config('rabbitmq.publishers.' . $publisher),
                 $options)->publish($msgs);
         }
         $this->info(json_encode($msgs));
