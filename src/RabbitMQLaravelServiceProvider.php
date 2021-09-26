@@ -6,6 +6,14 @@ use Illuminate\Support\ServiceProvider;
 
 class RabbitMQLaravelServiceProvider extends ServiceProvider
 {
+     /**
+     * @var array
+     */
+    protected $commands = [
+        Console\ConsumerRabbitMQCommand::class,
+        Console\PublisherRabbitMQCommand::class,
+    ];
+
     /**
      * Bootstrap services.
      *
@@ -29,7 +37,8 @@ class RabbitMQLaravelServiceProvider extends ServiceProvider
      */
     public function register()
     {
-        $this->app->bind('Guandeng\Rabbitmq\RabbitMQ', function ($app) {
+        $this->commands($this->commands);
+        $this->app->bind('rabbitmq', function ($app) {
             $config = $app['config']->get("rabbitmq");
             return new RabbitMQ($config);
         });

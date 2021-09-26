@@ -14,9 +14,8 @@ class RabbitMQ extends Broker
      * Create a new Skeleton Instance
      * @param $config
      */
-    public function __construct($config)
+    public function __construct()
     {
-        parent::__construct($config);
+        parent::__construct();
     }
-
 }
