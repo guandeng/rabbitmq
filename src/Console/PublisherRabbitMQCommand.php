@@ -55,7 +55,7 @@ class PublisherRabbitMQCommand extends Command
 
         $options['durable']     = (bool) $this->option('durable');
         $options['auto-delete'] = (bool) $this->option('auto-delete');
-        for ($i = 0; $i < 1000; $i++) {
+        for ($i = 0; $i < 1; $i++) {
             $msgs = [];
             array_push($msgs, $message);
             $rabbitmq->exchange(
