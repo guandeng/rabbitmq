@@ -20,7 +20,7 @@
 - [ ] 停止指定消费 
 
 #### 安装
->  composer require guandeng/rabbitmq-laravel
+>  composer require guandeng/laravel-rabbitmq
 
 #### .env配置
 ```
