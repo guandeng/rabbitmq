@@ -1,5 +1,5 @@
 {
-    "name": "guandeng/rabbitmq",
+    "name": "guandeng/laravel-rabbitmq",
     "description": "Laravel RabbitMQ",
     "license": "MIT",
     "authors": [
