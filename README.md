@@ -120,3 +120,4 @@ public function publish()
  php artisan consumer:rabbitmq DirectConsumer
 ```
 处理消息在消费者配置handlers指定回调类中
+具体使用参考Handlers下的DefaultHandler.php
