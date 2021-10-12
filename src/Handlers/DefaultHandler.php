@@ -30,10 +30,12 @@ class DefaultHandler extends Handler
      */
     protected function handleSuccess($msg)
     {
-        var_dump($msg);
-        /**
-         * For more Handler return values see the parent class
-         */
+        $data = $msg->getData(1);
+        if (isset($data[0]) && $data[0] == 'reject') {
+            dump(__CLASS__ . "收到拒绝消息:" . json_encode($data));
+            return Handler::RV_FAILED_STOP; // nack
+        }
+        dump(__CLASS__ . "收到消息:" . json_encode($data));
         return Handler::RV_SUCCEED_STOP;
     }
 }
